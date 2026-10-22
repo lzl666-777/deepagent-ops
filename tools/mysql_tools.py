@@ -4,6 +4,7 @@
 # 3. execute_sql_query: 执行自定义只读SQL查询（拒绝写操作与多语句）。
 import os
 import re
+from typing import Optional
 
 from dotenv import load_dotenv
 from mysql.connector import connect, Error
@@ -31,14 +32,30 @@ def get_db_config():
     return config
 
 
-_db_config = get_db_config()
+# 配置只在第一次真正连接时解析：
+# 原来在模块导入时就执行，导致 `import tools.mysql_tools` 必须有数据库凭据，
+# 单元测试连模块都导入不了（审计层因此长期没有测试）。
+_db_config: Optional[dict] = None
+
+
+def _config() -> dict:
+    global _db_config
+    if _db_config is None:
+        _db_config = get_db_config()
+    return _db_config
+
 
 # 只读保护：SQL 中禁止出现的写操作关键词（词边界匹配，避免误判列名如 updated_at）
 _FORBIDDEN_SQL_KEYWORDS = (
     "insert", "update", "delete", "drop", "alter", "truncate",
     "create", "grant", "revoke", "replace", "merge", "call",
     "lock", "unlock", "set", "use", "rename",
+    # SELECT 也能写文件 / 读服务器文件，只读查询不该包含它们
+    "outfile", "dumpfile", "load_file", "into",
 )
+
+# 允许的语句开头（只读）
+_READ_ONLY_STARTS = ("select", "show", "describe", "explain", "desc", "with")
 
 
 def _is_read_only_sql(sql: str) -> bool:
@@ -47,7 +64,7 @@ def _is_read_only_sql(sql: str) -> bool:
     if not stripped:
         return False
     # 只允许读语句开头
-    if not stripped.startswith(("select", "show", "describe", "explain", "desc", "with")):
+    if not stripped.startswith(_READ_ONLY_STARTS):
         return False
     # 禁止多语句（防 "; drop table ..." 注入）
     if ";" in sql.rstrip().rstrip(";"):
@@ -62,7 +79,7 @@ def _is_read_only_sql(sql: str) -> bool:
 def _get_valid_tables() -> set:
     """获取数据库中的合法表名集合（用于表名白名单校验）。"""
     try:
-        with connect(**_db_config) as conn:
+        with connect(**_config()) as conn:
             with conn.cursor() as cursor:
                 cursor.execute("show tables;")
                 return {row[0] for row in cursor.fetchall()}
@@ -77,7 +94,7 @@ def list_sql_tables() -> str:
     :return: 有表：可用的表：a,b,c  没表：没有可用的表
     """
     try:
-        with connect(**_db_config) as conn:
+        with connect(**_config()) as conn:
             with conn.cursor() as cursor:
                 cursor.execute("show tables;")
                 result = cursor.fetchall()
@@ -102,7 +119,7 @@ def get_table_data(table_name: str) -> str:
         return f"错误：表 '{table_name}' 不存在或非法，可用的表：{','.join(sorted(valid_tables))}"
 
     try:
-        with connect(**_db_config) as conn:
+        with connect(**_config()) as conn:
             with conn.cursor() as cursor:
                 sql = f"select * from `{table_name}` limit 100;"
                 cursor.execute(sql)
@@ -127,7 +144,7 @@ def execute_sql_query(sql: str) -> str:
         return "错误：只允许执行只读查询（SELECT/SHOW/DESCRIBE/EXPLAIN），已拒绝写操作或非法语句"
 
     try:
-        with connect(**_db_config) as conn:
+        with connect(**_config()) as conn:
             with conn.cursor() as cursor:
                 cursor.execute(sql)
                 column_names_str = ','.join(cursor.column_names)

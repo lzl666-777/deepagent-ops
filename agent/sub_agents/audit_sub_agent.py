@@ -7,14 +7,17 @@ from tools.business_tools import (
     calc_gross_margin,
     calc_return_rate,
 )
+from tools.audit_tools import verify_claims
 
 audit_sub_agent = {
     "name": sub_agents_config['audit']['name'],
     "description": sub_agents_config['audit']['description'],
     "system_prompt": sub_agents_config['audit']['system_prompt'],
-    # 审计专员掌握数据库只读工具 + 业务指标工具，可独立重新查询、独立复核，
-    # 而不是只"转述"其他助手的结论
+    # verify_claims 是复核的主路径：它重新查库、重新计算，并由 agent-audit 逐项比对，
+    # 任何数字偏差直接判不通过 —— 不依赖模型自己比较两份结论。
+    # 其余工具只用于补足它覆盖不到的部分（来源矛盾、信息缺失）。
     "tools": [
+        verify_claims,
         list_sql_tables,
         get_table_data,
         execute_sql_query,

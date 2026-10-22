@@ -7,7 +7,7 @@
 | 能力 | 说明 |
 |---|---|
 | **多智能体协同** | 主控 agent 规划 → 3 个领域专家并行取数 → 审计专员复核 → 综合决策 |
-| **审计独立复核** | 审计专员自带数据库只读工具，**独立重新查询验证**关键数字，校验数值自洽 / SOP 红线 / 来源矛盾 / 信息缺失，输出结构化审计结论 |
+| **确定性审计** | 审计专员用 `verify_claims` 重新查库、重新计算，由 [agent-audit](../agent-audit) 逐项比对：报告里的数字与数据库基准值不一致即判不通过——不靠模型自己比较两份结论（[设计说明](docs/audit.md)） |
 | **业务化工具** | 库存周转率、滞销预警、毛利分析、退货率统计——把《选品 SOP》的业务公式与红线固化在代码里，不靠 LLM 心算 |
 | **多源融合** | MySQL（内部经营数据）+ Tavily（外部市场情报）+ RAGFlow（内部制度知识库） |
 | **只读安全** | 数据库工具全部只读 + 参数化 + 表名白名单，防 SQL 注入 |
@@ -23,7 +23,7 @@
   ├─ 市场研究员（Tavily 联网）       ├─ 三路并行取数
   └─ 运营制度专员（RAGFlow）         ┘
   ↓
-审计专员（独立复核）← 重新查库验证 + SOP 红线校验 + 来源矛盾检查
+审计专员（独立复核）← verify_claims 重算比对 + SOP 红线 + 来源矛盾检查
   ↓
 主控 Agent 综合 → 决策报告（Markdown / PDF）
 ```
@@ -60,6 +60,8 @@ deepagent_project/
 ├── tools/
 │   ├── mysql_tools.py          # 只读 SQL 工具（防注入）
 │   ├── business_tools.py       # 业务化分析工具（固化 SOP 红线）
+│   ├── audit_core.py           # 审计判断（纯逻辑，无 I/O，可离线测试）
+│   ├── audit_tools.py          # 取基准值 + verify_claims 工具
 │   ├── internet_search_tool.py # Tavily 联网检索
 │   ├── ragflow_tools.py        # RAGFlow 知识库检索
 │   ├── markdown_tools.py       # Markdown 生成
@@ -68,6 +70,8 @@ deepagent_project/
 ├── utils/                      # 路径解析 / 格式转换 / 日志
 ├── prompt/prompts.yaml         # 所有 prompt 配置
 ├── sql/db.sql                  # 跨境电商数据库（建表 + 模拟数据）
+├── tests/                      # 审计核心单元测试（不需要数据库）
+├── docs/audit.md               # 审计链路设计说明
 ├── ui/                         # Vue 前端
 ├── output/                     # 生成的报告目录
 ├── upload/                     # 用户上传文件目录
@@ -96,9 +100,16 @@ deepagent_project/
 ### 3. 安装依赖
 
 ```bash
-uv sync            # 推荐（项目自带 uv.lock）
+uv sync                          # 推荐（项目自带 uv.lock）
 # 或
 python -m venv .venv && .venv\Scripts\activate && pip install -e .
+```
+
+审计链路依赖同级的 [`agent-audit`](../agent-audit) 仓库（`pyproject.toml` 里已声明，
+uv 会按 `[tool.uv.sources]` 的本地路径安装；用 pip 时手动装一次）：
+
+```bash
+pip install -e ../agent-audit
 ```
 
 **前端依赖**：

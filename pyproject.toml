@@ -4,7 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "aiofiles>=25.1.0",
-    "colorlog>=6.10.1",
+    "agent-audit>=0.1.1",
     "colorlog>=6.10.1",
     "deepagents>=0.6.6",
     "fastapi>=0.136.3",
@@ -19,8 +19,19 @@ dependencies = [
     "python-multipart>=0.0.29",
     "pywin32>=311",
     "pyyaml>=6.0.3",
-    "ragflow-sdk==0.24.0", # 使用高版本就有问题
+    "ragflow-sdk==0.24.0", # 使用高版本就有问题，先固定
     "requests>=2.34.2",
     "tavily-python>=0.7.24",
     "uvicorn[standard]>=0.48.0",
 ]
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+# 审计链路依赖同级的 agent-audit 仓库（尚未发布到 PyPI）。
+# uv 会按这里的本地路径安装；用 pip 时执行 `pip install -e ../agent-audit`。
+[tool.uv.sources]
+agent-audit = { path = "../agent-audit", editable = true }
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
