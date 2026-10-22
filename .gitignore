@@ -1,0 +1,18 @@
+# 环境变量（含密钥，勿提交）
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+
+# IDE
+.idea/
+.vscode/
+
+# 运行时数据（生成的报告、上传文件、日志）
+output/
+upload/
+*.log

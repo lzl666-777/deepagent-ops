@@ -1,0 +1,26 @@
+# deepagent 本地开发依赖（仅 MySQL）
+# RAGFlow / DashScope / Tavily 均为外部服务，不在本 compose 内
+#
+# 用法：docker compose up -d
+# 首次启动会自动执行 sql/db.sql（建库 + 8 个商品模拟数据）
+# 对应 .env：
+#   MYSQL_HOST=127.0.0.1
+#   MYSQL_PORT=3306
+#   MYSQL_USER=root
+#   MYSQL_PASSWORD=<下面设置的密码>
+#   MYSQL_DATABASE=crossborder_db
+
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: deepagent-mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: change-me-in-production
+      MYSQL_DATABASE: crossborder_db
+    ports:
+      - "3306:3306"
+    volumes:
+      - ./volumes/mysql:/var/lib/mysql
+      - ./sql/db.sql:/docker-entrypoint-initdb.d/db.sql:ro
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    restart: unless-stopped
