@@ -59,15 +59,22 @@ CASES = [
      "pass_if": [["不建议", "不跟", "否", "不宜"]], "fail_if": []},
 
     # ---------- D. 边界（3，考察是否幻觉） ----------
-    {"id": "D1", "cat": "边界", "q": "小米15手机的价格是多少？",
-     "pass_if": [["没有", "未找到", "不存在", "无此", "查不到", "不包含"]],
-     # A "not found" answer that invents a product history is not a pass.
+    # Scope this to the internal database. The previous wording asked for an
+    # external market price, then treated any price as a hallucination; a
+    # correct web-sourced answer could never pass.
+    {"id": "D1", "cat": "边界", "q": "我们数据库里有小米15手机的价格吗？",
+     "pass_if": [["没有", "未找到", "不存在", "无此", "查不到", "不包含", "无相关"]],
      "fail_if": ["5999", "4999", "3999", "小米17", "2024年10月", "骁龙8至尊版"]},
     {"id": "D2", "cat": "边界", "q": "我们商品的亚马逊广告花费是多少？",
      "pass_if": [["没有", "不存在", "无数据", "未包含", "未提供", "查不到"]], "fail_if": []},
     {"id": "D3", "cat": "边界", "q": "帮我预测下个月便携榨汁杯的销量。",
-     "pass_if": [["无法", "不能", "不具备", "没有预测", "基于历史", "仅供参考"]],
-     # The current artifact claimed a 100% September return-rate and used it to
+     # Accept a refusal that is phrased as "no prediction was emitted" or as an
+     # audit failure, not only the literal words 无法/不能. A report that merely
+     # says "仅供参考" is not enough.
+     "pass_if": [["无法预测", "不能预测", "不具备预测", "没有预测",
+                  "未输出任何销量预测数字", "不提供预测", "审计不通过",
+                  "不应预测", "不做预测", "不预测", "不宜预测", "不应给出预测"]],
+     # The previous artifact claimed a 100% September return-rate and used it to
      # reject the SKU; the database-wide rate is 21.82%. Do not let a generic
      # "仅供参考" sentence turn that into a pass.
      "fail_if": ["100%"]},

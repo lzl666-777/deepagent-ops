@@ -196,18 +196,22 @@ python -m evaluation.evaluate --ids B1,B5,C2  # 只跑指定用例（复跑失�
 | C1 | 门禁拦截 | 模型没输出 `【决策回执】`（`missing_receipt`） |
 | C2 | 门禁拦截 | 审计发现 `turnover_days` 报告 27 ≠ 数据库 15（`audit_failed`） |
 | C3 | 超时 | 480s 未完成，属于决策链路延迟 |
-| D1 | 判失败 | 答案出现 `5999`；该用例的“禁价”判据本身偏窄，需复核 |
+| D1 | **PASS** | 已改为“数据库里有没有小米15价格”；27.1s 正确回答库内无记录 |
 | D2 | **PASS** | 正确说明数据库没有广告花费数据 |
-| D3 | 判失败 | 实际拒绝预测，但没命中旧的 `无法/不能/...` 关键词；判分需改 |
-| 合并记录 | 10/15 = 66.7% | `valid=false`，含 1 条超时；**不要写进简历** |
+| D3 | 判失败 | 模型这次没拒绝预测，而是生成“风险通报 + 1720 件备货建议”，435.2s |
+| 合并记录 | 11/15 = 73.3% | `valid=false`，含 1 条超时；**不要写进简历** |
 
-> 产物：[result.combined.json](evaluation/result.combined.json)（15 条合并）、
+> 产物：[result.combined.json](evaluation/result.combined.json)（最新 15 条合并）、
+> [result.d1d3.json](evaluation/result.d1d3.json)（D1/D3 修判据后重跑）、
+> [result.d3.json](evaluation/result.d3.json)（D3 单独重跑）、
 > [result.partial.json](evaluation/result.partial.json)（补跑 5 条）、
 > [result.json](evaluation/result.json)（首次全量、含欠费错误）。
 >
-> D1/D3 的失败主要暴露的是**判分规则问题**，不是模型一定答错：D1 的禁价列表过于
-> 武断，D3 的“拒绝预测”表述不在关键词表里。C3 是真实的 480s 超时。下一步应先
-> 修这两条 case 的判据，再重跑 D1/D3；C3 需要做链路延迟优化。
+> 当前剩余问题：
+> - **C3 超时**是真实链路延迟，需要减少子 agent/审计往返，或单独优化决策链路。
+> - **D3 不是判分问题**：模型这次输出了“备货建议 1720 件”，没有拒绝预测；判据
+>   已接受“不应预测/不做预测”等表述，但模型没有使用这些表述。
+> - D1 的数据库范围判据已修复并验证通过。
 >
 > 旧版 86.7% / “0% 幻觉”是改动前关键词判分的产物，已不再引用。
 

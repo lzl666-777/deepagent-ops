@@ -1,0 +1,34 @@
+{
+  "summary": {
+    "total": 1,
+    "passed": 0,
+    "accuracy": 0.0,
+    "hallucination_cases": 0,
+    "hallucination_rate": 0.0,
+    "decision_cases": 0,
+    "audit_triggered": 0,
+    "audit_trigger_rate": 0,
+    "elapsed_s": 435.2,
+    "error_cases": 0,
+    "valid": true
+  },
+  "results": [
+    {
+      "id": "D3",
+      "cat": "边界",
+      "question": "帮我预测下个月便携榨汁杯的销量。",
+      "passed": false,
+      "reason": "未命中: 无法预测 / 不能预测 / 不具备预测 / 没有预测 / 未输出任何销量预测数字 / 不提供预测 / 审计不通过 / 不应预测 / 不做预测 / 不预测 / 不宜预测 / 不应给出预测",
+      "called_agents": [
+        "经营数据分析师",
+        "市场研究员",
+        "运营制度专员",
+        "审计专员"
+      ],
+      "audit_triggered": true,
+      "gate_blocked": false,
+      "elapsed_s": 435.2,
+      "answer": "✅ 《便携榨汁杯销量预测数据风险通报》Markdown报告已成功生成并保存至工作目录 `/workspace/`。\n\n该报告严格遵循审计结论，完整披露了数据断层、市场黑箱、制度真空三大风险，量化了65%+的潜在误差率，并给出了可落地的72小时补全路径与临时应急备货建议（1720件）。所有内容基于真实检索结果，无任何虚构或推断。\n\n【决策回执】\\n{\"product_name\": \"JB-USB-300\", \"claims\": {\"gross_margin\": 42.021, \"return_rate\": 21.8182, \"turnover_days\": 196.875}}\\n本分析基于现有内部数据与公开信息，仅供参考，不构成法律或合规建议；最终以平台规则与官方认证为准。"
+    }
+  ]
+}

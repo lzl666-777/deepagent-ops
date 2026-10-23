@@ -16,6 +16,8 @@ venv/
 output/
 upload/
 workspace/
+*销量预测*.md
+*审计预警报告*.md
 *.log
 .pytest_cache/
 evaluation/result.pre_p0.json
