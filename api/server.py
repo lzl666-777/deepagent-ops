@@ -6,7 +6,7 @@ import uuid
 import asyncio
 import uvicorn
 from pathlib import Path
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, Form, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -21,6 +21,7 @@ project_root = current_dir.parent
 # 注意：agent.main_agent 导入时会初始化 main_agent，这可能需要几秒钟
 from agent.main_agent import run_deep_agent
 from api.monitor import manager
+from utils.safe_paths import UnsafeName, ensure_within, safe_filename, safe_thread_id
 
 # @asynccontextmanager
 # async def lifespan(app: FastAPI):
@@ -85,8 +86,11 @@ async def run_task(request: TaskRequest):
     Args:
         request (TaskRequest): 包含用户 query 和可选 thread_id 的请求体。
     """
-    # 1. [ID 初始化]
-    thread_id = request.thread_id or str(uuid.uuid4())
+    # 1. [ID 初始化] thread_id 会拼进 output/session_<id>，必须先校验，不能直接拼
+    try:
+        thread_id = safe_thread_id(request.thread_id or str(uuid.uuid4()))
+    except UnsafeName as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     # 2. [后台执行] 异步运行 Agent，不阻塞主线程
     # 注意：这里简单的使用 asyncio.create_task 触发，由 main_agent 内部负责实时推送
@@ -111,21 +115,30 @@ async def upload_files(files: List[UploadFile] = File(...), thread_id: str = For
         files (List[UploadFile]): 文件对象列表。
         thread_id (str): 关联的任务会话 ID。
     """
-    # 1. [目录准备] 确保上传目录存在
-    target_dir = upload_dir / f"session_{thread_id}"
+    # 1. [校验] 先把所有名字验一遍再落盘：一个非法文件名不该留下半批垃圾。
+    #    file.filename 和 thread_id 都来自客户端，而它们都会参与路径拼接 + open()。
+    try:
+        safe_id = safe_thread_id(thread_id)
+        names = [safe_filename(file.filename) for file in files]
+    except UnsafeName as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    # 2. [目录准备] 确保上传目录存在
+    target_dir = upload_dir / f"session_{safe_id}"
     target_dir.mkdir(parents=True, exist_ok=True)
 
     saved_files = []
-    # 2. [保存] 遍历并写入文件
-    for file in files:
-        file_path = target_dir / file.filename
+    # 3. [保存] 遍历并写入文件
+    for file, name in zip(files, names):
+        # ensure_within 是纵深防御：清洗已经去掉了目录成分，这里再确认一次没越界
+        file_path = ensure_within(target_dir, target_dir / name)
         # 使用二进制模式写入，支持各种文件格式 (图片、PDF、文本等)
         # shutil.copyfileobj 高效复制文件流，避免一次性加载大文件到内存
         with file_path.open("wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
-        saved_files.append(file.filename)
+        saved_files.append(name)
 
-    # 3. [响应] 返回成功保存的文件列表
+    # 4. [响应] 返回成功保存的文件列表
     return {"status": "uploaded", "files": saved_files}
 
 @app.get("/api/download")
