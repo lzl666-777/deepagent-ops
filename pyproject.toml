@@ -35,3 +35,6 @@ agent-audit = { path = "../agent-audit", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# 本项目没有 [build-system]（uv 虚拟项目），不会被安装成包，
+# 所以 `uv run pytest` 时项目根目录不在 sys.path 上，`import tools` 会失败。
+pythonpath = ["."]
