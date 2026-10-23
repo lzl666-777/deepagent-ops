@@ -188,22 +188,26 @@ python -m evaluation.evaluate --ids B1,B5,C2  # 只跑指定用例（复跑失�
 
 **判分方式**：规则匹配（数字归一化后做关键词校验，可复现）；每跑完一条增量写入 `evaluation/result.json`。
 
-**2026-10-23 P0 重跑结果**（当前代码；**未跑完，不能当作 15 条准确率**）：
+**2026-10-23 P0 重跑结果**（15 条已全部执行；**仍不能当作干净的质量分数**）：
 
-| 分段 | 结果 |
-|---|---|
-| A1–B5（数据查询 + 业务计算） | **9/9 PASS** |
-| C1（决策） | 被决策门禁拦截：`missing_receipt`（模型没输出 `【决策回执】`） |
-| C2、C3、D1、D2、D3 | DashScope 返回 `Arrearage`（账户欠费，HTTP 400），未完成 |
-| 记录值 | 9/15 = 60%，但这是**欠费中断后的残缺结果**，不是模型质量 |
+| 用例 | 结果 | 说明 |
+|---|---|---|
+| A1–B5 | **9/9 PASS** | 数据查询 + 业务计算 |
+| C1 | 门禁拦截 | 模型没输出 `【决策回执】`（`missing_receipt`） |
+| C2 | 门禁拦截 | 审计发现 `turnover_days` 报告 27 ≠ 数据库 15（`audit_failed`） |
+| C3 | 超时 | 480s 未完成，属于决策链路延迟 |
+| D1 | 判失败 | 答案出现 `5999`；该用例的“禁价”判据本身偏窄，需复核 |
+| D2 | **PASS** | 正确说明数据库没有广告花费数据 |
+| D3 | 判失败 | 实际拒绝预测，但没命中旧的 `无法/不能/...` 关键词；判分需改 |
+| 合并记录 | 10/15 = 66.7% | `valid=false`，含 1 条超时；**不要写进简历** |
 
-> 说明：`evaluation/result.json` 是这次重跑的真实产物，含 5 条 `[ERROR]`。
-> 需要先给 DashScope 账户充值，然后重跑（`--ids` 默认写
-> `evaluation/result.partial.json`，不会覆盖完整 `result.json`）：
+> 产物：[result.combined.json](evaluation/result.combined.json)（15 条合并）、
+> [result.partial.json](evaluation/result.partial.json)（补跑 5 条）、
+> [result.json](evaluation/result.json)（首次全量、含欠费错误）。
 >
-> ```bash
-> python -m evaluation.evaluate --ids C2,C3,D1,D2,D3
-> ```
+> D1/D3 的失败主要暴露的是**判分规则问题**，不是模型一定答错：D1 的禁价列表过于
+> 武断，D3 的“拒绝预测”表述不在关键词表里。C3 是真实的 480s 超时。下一步应先
+> 修这两条 case 的判据，再重跑 D1/D3；C3 需要做链路延迟优化。
 >
 > 旧版 86.7% / “0% 幻觉”是改动前关键词判分的产物，已不再引用。
 

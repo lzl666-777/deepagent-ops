@@ -15,7 +15,7 @@ venv/
 # 运行时数据（生成的报告、上传文件、日志）
 output/
 upload/
+workspace/
 *.log
 .pytest_cache/
-evaluation/result.partial.json
 evaluation/result.pre_p0.json

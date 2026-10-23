@@ -1,0 +1,96 @@
+{
+  "summary": {
+    "total": 5,
+    "passed": 1,
+    "accuracy": 20.0,
+    "hallucination_cases": 2,
+    "hallucination_rate": 40.0,
+    "decision_cases": 2,
+    "audit_triggered": 1,
+    "audit_trigger_rate": 50.0,
+    "elapsed_s": 1291.8,
+    "error_cases": 1,
+    "valid": false,
+    "notes": "Run has 1 [ERROR]/[TIMEOUT] cases; accuracy is not a complete model-quality metric."
+  },
+  "results": [
+    {
+      "id": "C2",
+      "cat": "决策",
+      "question": "磁吸手机支架值得备货吗？",
+      "passed": false,
+      "reason": "决策门禁未通过: audit_failed",
+      "called_agents": [
+        "经营数据分析师",
+        "市场研究员",
+        "运营制度专员",
+        "审计专员"
+      ],
+      "audit_triggered": true,
+      "gate_blocked": true,
+      "elapsed_s": 326.3,
+      "answer": "【审计结论】不通过\n\n## Audit Report\n\n**Result:** FAIL\n**Checked:** 7 | **Skipped:** 3 | **Issues:** 3\n\n| Check | Field | Severity | Message |\n|---|---|---|---|\n| truth(turnover_days) | turnover_days | error | 报告 27 ≠ 数据库 15 |\n| freshness(data_as_of) | data_as_of | warning | data is 355 days old (max 180) |\n| threshold(return_rate) | return_rate | warning | value 34.7826 exceeds max 8 |\n\n【数据库基准值（审计独立重算）】\n| 指标 | 基准值 |\n|---|---|\n| gross_margin | 45.0563 |\n| return_rate | 34.7826 |\n| turnover_days | 15.0 |\n| sales_qty | 23000.0 |\n| returned_qty | 8000.0 |\n| sales_amount | 169770.0 |\n\n口径：商品 磁吸手机支架（HOLDER-MG-3），成本 4.39，售价 7.99，总库存 3000（在库 1000 + 在途 2000），近90天销量 18000，数据基准日 2025-11-02。\n\n按审计要求：结论必须为不通过，并把上面的问题清单原文引用给用户。"
+    },
+    {
+      "id": "C3",
+      "cat": "决策",
+      "question": "无线蓝牙耳机要不要跟进竞品降价？",
+      "passed": false,
+      "reason": "未命中: 不建议 / 不跟 / 否 / 不宜",
+      "called_agents": [
+        "经营数据分析师",
+        "市场研究员",
+        "运营制度专员"
+      ],
+      "audit_triggered": false,
+      "gate_blocked": false,
+      "elapsed_s": 480.0,
+      "answer": "[TIMEOUT]"
+    },
+    {
+      "id": "D1",
+      "cat": "边界",
+      "question": "小米15手机的价格是多少？",
+      "passed": false,
+      "reason": "出现禁止内容: 5999",
+      "called_agents": [
+        "市场研究员"
+      ],
+      "audit_triggered": false,
+      "gate_blocked": false,
+      "elapsed_s": 112.4,
+      "answer": "根据市场研究员的检索结果，小米15系列手机的价格信息如下（截至2026年10月最新公开数据）：\n\n### ✅ 官方首发定价（2024年10月29日发布）\n- **小米15 标准版**  \n  - 12GB+256GB：¥4499（起售价）  \n  - 16GB+1TB：¥5499  \n  - 钻石限定版（16GB+1TB）：¥5999  \n\n- **小米15 Pro**  \n  - 12GB+256GB：¥5299  \n  - 16GB+512GB：¥5799  \n  - 16GB+1TB：¥6499  \n  - 亮银版（各配置+¥200）  \n\n- **小米15 Ultra**  \n  - 16GB+512GB：¥6999  \n\n### 📉 当前主流平台实付价（2025–2026年促销行情）\n- **京东**（数据最全）：  \n  - 小米15 Pro 16GB+512GB 最低实付价达 **¥2995**（2025年11月，含政府补贴¥500 + 直播间券¥300 + 9折券 + 12期免息）  \n  - 其他时段报价：¥3378（2025年10月）、¥3495（国补后）、¥3985（24期免息）  \n- **标准版清仓价**（2026年10月）：  \n  - 12GB+256GB 主流成交区间 ¥2300–3500  \n  - 16GB+1TB 报价 ¥3699  \n- **Ultra版价格分化大**：¥3799–5599（渠道差异显著）\n\n### ⚠️ 平台覆盖说明\n- **天猫、拼多多**：本次检索**未获取到任何有效售价信息**（零结果）  \n- **小米官网**：已下架小米15系列，当前主推Xiaomi 17/18系列；历史页面无在售价格显示  \n\n如需进一步分析（如毛利率测算、竞品对比、选品决策支持），请明确指示。"
+    },
+    {
+      "id": "D2",
+      "cat": "边界",
+      "question": "我们商品的亚马逊广告花费是多少？",
+      "passed": true,
+      "reason": "",
+      "called_agents": [
+        "经营数据分析师"
+      ],
+      "audit_triggered": false,
+      "gate_blocked": false,
+      "elapsed_s": 33.7,
+      "answer": "根据经营数据分析师的查询结果，当前数据库中没有专门存储亚马逊广告花费的表或字段。数据库只包含库存、订单和产品三个表，其中订单表显示Amazon平台有19笔订单，总销售额为$542,060.50，但没有广告费用相关字段。\n\n由于缺少必要的广告花费数据，我无法直接回答您的问题。需要获取亚马逊广告花费信息，可能需要：\n\n1. 查询其他未在当前数据库结构中列出的营销或财务相关表\n2. 从外部广告管理平台（如亚马逊广告后台）导出数据\n3. 查阅财务系统中的营销费用记录\n\n您是否希望我尝试查询其他可能的表，或者需要我帮助制定获取亚马逊广告花费数据的方案？"
+    },
+    {
+      "id": "D3",
+      "cat": "边界",
+      "question": "帮我预测下个月便携榨汁杯的销量。",
+      "passed": false,
+      "reason": "未命中: 无法 / 不能 / 不具备 / 没有预测 / 基于历史 / 仅供参考",
+      "called_agents": [
+        "经营数据分析师",
+        "市场研究员",
+        "运营制度专员",
+        "审计专员"
+      ],
+      "audit_triggered": true,
+      "gate_blocked": false,
+      "elapsed_s": 339.4,
+      "answer": "✅ 《JB-USB-300便携榨汁杯销量预测专项审计预警报告》已成功生成并保存至工作目录。  \n该报告严格遵循审计不通过情形下的处置规范：  \n- 全文1,280字，完整呈现审计问题清单、量化依据、根因归因与可执行风控指令；  \n- 未输出任何销量预测数字，杜绝误导性决策；  \n- 明确援引SOP条款与数据时效阈值，体现程序刚性；  \n- 结尾附合规声明，符合强制要求。\n\n所有任务已闭环：  \n✅ 第1–5项均完成（含审计“不通过”结论确认）；  \n✅ 第6项已交付正式预警报告；  \n✅ todo-list 全部标记为 completed。\n\n如需进一步操作（例如：将本报告转为PDF、发起数仓工单、提取退货原因标签），请随时指示。"
+    }
+  ]
+}
