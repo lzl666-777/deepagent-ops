@@ -15,6 +15,7 @@ from api.monitor import monitor
 from tools.markdown_tools import generate_markdown
 from tools.pdf_tools import convert_md_to_pdf
 from tools.upload_file_read_tool import read_file_content
+from tools.decision_gate import gate_final_answer
 from utils.logger_utils import logger
 
 main_agent = create_deep_agent(
@@ -25,29 +26,27 @@ main_agent = create_deep_agent(
 )
 
 def _report_agent_process(chunk):
+    """Report progress and return the latest final model text (if any)."""
+    final_text = ""
     for key, value in chunk.items():
         # print(f"=={key}==")
         # print(value)
-        if not value or "messages" not in value: continue
+        if not value or "messages" not in value:
+            continue
         message = value["messages"][-1]
         if key == "model":
             if message.tool_calls:
                 for tool_call in message.tool_calls:
                     # 区分子智能体和工具
                     if tool_call["name"] == "task":
-                        # print( f"--准备调用子智能体{tool_call['args']['subagent_type']}, 参数：{tool_call['args']['description']}")
                         monitor.report_assistant(tool_call['args']['subagent_type'], tool_call['args']['description'])
                     else:
-                        # print(f"--智能体准备调用工具{tool_call['name']}, 参数：{tool_call['args']}")
                         monitor.report_tool(tool_call['name'], tool_call['args'])
             elif message.content:
-                # print(f"--智能体返回最终结果: {message.content}")
-                monitor.report_task_result(message.content)
-        # elif key == "tools":
-        #     if message.name == "task":
-        #         print(f"--调用子智能体返回的结果为：{message.content}")
-        #     else:
-        #         print(f"--调用工具{message.name}返回的结果为：{message.content}")
+                # Do not publish a final answer here: it must pass the
+                # deterministic decision gate first.
+                final_text = str(message.content)
+    return final_text
 
 async def run_deep_agent(query: str, thread_id: str):
 
@@ -98,9 +97,18 @@ async def run_deep_agent(query: str, thread_id: str):
                 "content": f"问题：{query}, 补充描述: {path_instruction}"
             }]
         })
+        final_text = ""
         async for chunk in result:
             # 遍历每个chunk,向前端发送当前状态及数据
-            _report_agent_process(chunk)
+            latest = _report_agent_process(chunk)
+            if latest:
+                final_text = latest
+        if final_text:
+            gated = gate_final_answer(final_text)
+            monitor.report_task_result(gated.text)
+            if not gated.allowed:
+                logger.warning("决策门禁拒绝输出: %s", gated.reason)
+                monitor._emit("error", "决策门禁：审计未通过，已阻止决策输出")
     except Exception as e:
         logger.error(f"智能体执行最终失败：{e}")
         monitor._emit("error", f"智能体执行失败：{e}")

@@ -34,6 +34,15 @@ SOP_MAX_RETURN_RATE = 8.0     # 退货率红线（%）
 #: 业务数据基准日距今超过这么多天就提示“数据可能过期”。
 DATA_MAX_AGE_DAYS = 180.0
 
+#: A decision gate is only meaningful when the report supplied these numbers.
+#: Missing one is "无法复核", not a clean pass: the model must not be able to
+#: avoid the audit by sending an empty or partial ``claims`` dict.
+DECISION_REQUIRED_METRICS: Tuple[str, ...] = (
+    "gross_margin",
+    "return_rate",
+    "turnover_days",
+)
+
 
 # --------------------------------------------------------------------------- #
 # 基准值
@@ -47,7 +56,7 @@ class Truth:
     category: str
     cost: float
     price: float
-    gross_margin: float            # 数据库里存的毛利率（%）
+    gross_margin: float            # 从成本/售价重算的毛利率（%）
     sales_qty: int
     sales_amount: float
     returned_qty: int
@@ -127,16 +136,37 @@ class AuditOutcome:
     claims: Dict[str, Any]
     unknown: List[str]
     truth: Truth
+    missing_required: List[str] = field(default_factory=list)
+    unverifiable_required: List[str] = field(default_factory=list)
+
+    @property
+    def verified(self) -> bool:
+        """True only when required claims were present and actually checked.
+
+        ``report.passed`` alone is not enough: an empty claims dict has no
+        errors, only skips. That is exactly the fail-open path a decision gate
+        must not have.
+        """
+        return (
+            self.report.passed
+            and self.report.checked > 0
+            and not self.missing_required
+            and not self.unverifiable_required
+        )
 
     @property
     def passed(self) -> bool:
-        return self.report.passed
+        """The gate result. Unverified is not a pass."""
+        return self.verified
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "passed": self.passed,
+            "verified": self.verified,
             "checked": self.report.checked,
             "skipped": self.report.skipped,
+            "missing_required": list(self.missing_required),
+            "unverifiable_required": list(self.unverifiable_required),
             "unknown_claims": list(self.unknown),
             "issues": [
                 {
@@ -207,6 +237,7 @@ def audit_claims(
     claims: Dict[str, Any],
     truth: Truth,
     now: Optional[Any] = None,
+    required: Tuple[str, ...] = DECISION_REQUIRED_METRICS,
 ) -> AuditOutcome:
     """审计一份报告里的数字。
 
@@ -228,6 +259,11 @@ def audit_claims(
     2. 红线按**数据库真值**判定，不按报告里的数。否则分析师把退货率少报成
        8.2% 时，告警会写成“8.2 超过上限 8”——既没用又误导；而真值是 21.82%，
        越线严重得多。
+
+    ``required`` is deliberately fail-closed: a claim set that omits a required
+    metric is reported as "无法复核", not as a clean pass. The previous behavior
+    allowed ``audit_claims({}, truth)`` to pass with every check skipped, so a
+    caller could avoid the audit by sending nothing.
     """
     normalised, unknown = canonicalise(claims)
     benchmark = truth_metrics(truth)
@@ -241,6 +277,13 @@ def audit_claims(
         "turnover_days": truth.turnover_days,
         "sales_amount": truth.sales_amount,
     })
+
+    missing_required = [key for key in required if key not in normalised]
+    unverifiable_required = [
+        key for key in required
+        if key in normalised
+        and (benchmark.get(key) is None or _to_number(normalised.get(key)) is None)
+    ]
 
     checks: List[Check] = [
         # 报告内部的算术自洽：毛利率 = (1 - 成本/售价) * 100
@@ -256,6 +299,25 @@ def audit_claims(
 
     report = Auditor(checks).check(audit_input, source=source)
 
+    # A missing/unverifiable required metric is an audit failure, not a skip.
+    # Add it after the truth checks so the specific numeric error remains the
+    # first issue when both are present.
+    if missing_required:
+        report.issues.append(AuditIssue(
+            "required_claims", "*",
+            "missing required claims: %s" % ", ".join(missing_required),
+            "error",
+            expected=", ".join(required), actual=", ".join(sorted(normalised)),
+        ))
+        report.checked += 1
+    if unverifiable_required:
+        report.issues.append(AuditIssue(
+            "unverifiable_claims", "*",
+            "required claims could not be verified: %s" % ", ".join(unverifiable_required),
+            "error",
+        ))
+        report.checked += 1
+
     # SOP 红线按真值判定：要回答的是“这门生意到底越没越线”，
     # 而不是“报告里那个（可能已经算错的）数越没越线”。
     sop_report = Auditor([
@@ -269,7 +331,14 @@ def audit_claims(
     report.checked += sop_report.checked
     report.skipped += sop_report.skipped
 
-    return AuditOutcome(report=report, claims=normalised, unknown=unknown, truth=truth)
+    return AuditOutcome(
+        report=report,
+        claims=normalised,
+        unknown=unknown,
+        truth=truth,
+        missing_required=missing_required,
+        unverifiable_required=unverifiable_required,
+    )
 
 
 # --------------------------------------------------------------------------- #
@@ -277,7 +346,19 @@ def audit_claims(
 # --------------------------------------------------------------------------- #
 def render(outcome: AuditOutcome) -> str:
     """把审计结果渲染成模型可以直接引用、用户可以直接读的文本。"""
-    verdict = "通过" if outcome.passed else "不通过"
+    gate_checks = {"required_claims", "unverifiable_claims"}
+    has_data_error = any(
+        issue.severity == "error" and issue.check not in gate_checks
+        for issue in outcome.report.issues
+    )
+    if has_data_error:
+        verdict = "不通过"
+    elif outcome.missing_required or outcome.unverifiable_required:
+        verdict = "无法复核"
+    elif outcome.passed:
+        verdict = "通过"
+    else:
+        verdict = "无法复核"
     lines = ["【审计结论】%s" % verdict, "", outcome.report.to_markdown(), ""]
 
     truth = outcome.truth
@@ -302,6 +383,12 @@ def render(outcome: AuditOutcome) -> str:
         lines.append("")
         lines.append("注意：以下字段无法识别，未参与审计：%s。可用字段见工具说明。"
                      % "、".join(outcome.unknown))
+    if outcome.missing_required or outcome.unverifiable_required:
+        lines.append("")
+        lines.append(
+            "按审计要求：无法复核时不得给出决策；请补齐并重新核对以下字段：%s。"
+            % "、".join(outcome.missing_required + outcome.unverifiable_required)
+        )
     if not outcome.passed:
         lines.append("")
         lines.append("按审计要求：结论必须为不通过，并把上面的问题清单原文引用给用户。")

@@ -17,3 +17,5 @@ output/
 upload/
 *.log
 .pytest_cache/
+evaluation/result.partial.json
+evaluation/result.pre_p0.json

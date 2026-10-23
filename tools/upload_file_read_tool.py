@@ -31,7 +31,12 @@ def read_file_content(
 
     # ====================== 1. Path 重构路径解析 ======================
     session_dir = get_session_context()
-    file_path = Path(resolve_path(filename, session_dir))  # 转为Path对象
+    try:
+        file_path = Path(resolve_path(filename, session_dir))
+    except ValueError as exc:
+        # A path outside the session is a security rejection, not a normal
+        # "file not found" — report it explicitly to the model.
+        return f"拒绝访问：{exc}"
 
     # 检查文件是否存在（替代os.path.exists）
     if not file_path.exists():

@@ -7,10 +7,10 @@
 | 能力 | 说明 |
 |---|---|
 | **多智能体协同** | 主控 agent 规划 → 3 个领域专家并行取数 → 审计专员复核 → 综合决策 |
-| **确定性审计** | 审计专员用 `verify_claims` 重新查库、重新计算，由 [agent-audit](../agent-audit) 逐项比对：报告里的数字与数据库基准值不一致即判不通过——不靠模型自己比较两份结论（[设计说明](docs/audit.md)） |
+| **确定性审计** | 审计专员用 `verify_claims` 重新查库、重新计算，由 [agent-audit](../agent-audit) 逐项比对；最终由 `tools/decision_gate.py` 做 fail-closed 门禁：决策答案必须带结构化回执，缺必填指标/审计未通过时直接拦截（[设计说明](docs/audit.md)） |
 | **业务化工具** | 库存周转率、滞销预警、毛利分析、退货率统计——把《选品 SOP》的业务公式与红线固化在代码里，不靠 LLM 心算 |
 | **多源融合** | MySQL（内部经营数据）+ Tavily（外部市场情报）+ RAGFlow（内部制度知识库） |
-| **只读安全** | 数据库工具全部只读 + 参数化 + 表名白名单，防 SQL 注入 |
+| **只读安全** | 数据库工具使用只读会话（`SET SESSION TRANSACTION READ ONLY`）+ 参数化 + 表名白名单；生产环境应再配一个只有 SELECT 权限的 MySQL 账号 |
 | **实时进度** | WebSocket 推送 agent 执行过程（调用了哪个子 agent、正在执行哪个工具） |
 
 ## 🏗️ 架构
@@ -100,9 +100,7 @@ deepagent_project/
 ### 3. 安装依赖
 
 ```bash
-uv sync                          # 推荐（项目自带 uv.lock）
-# 或
-python -m venv .venv && .venv\Scripts\activate && pip install -e .
+uv sync                          # 项目是 uv 虚拟项目，没有 [build-system]，请用 uv
 ```
 
 审计链路依赖同级的 [`agent-audit`](../agent-audit) 仓库（`pyproject.toml` 里已声明，
@@ -190,16 +188,24 @@ python -m evaluation.evaluate --ids B1,B5,C2  # 只跑指定用例（复跑失�
 
 **判分方式**：规则匹配（数字归一化后做关键词校验，可复现）；每跑完一条增量写入 `evaluation/result.json`。
 
-**评测结果**（15 条，规则判分）：
+**2026-10-23 P0 重跑结果**（当前代码；**未跑完，不能当作 15 条准确率**）：
 
-| 指标 | 结果 |
+| 分段 | 结果 |
 |---|---|
-| 准确率 | **86.7%**（13/15） |
-| 幻觉率 | **0%**（边界用例未编造库内数据） |
-| 决策用例审计触发率 | 1/3（C1/C2 因单条决策链路超过 8 分钟超时，非答错） |
-| 总耗时 | 约 31 分钟 |
+| A1–B5（数据查询 + 业务计算） | **9/9 PASS** |
+| C1（决策） | 被决策门禁拦截：`missing_receipt`（模型没输出 `【决策回执】`） |
+| C2、C3、D1、D2、D3 | DashScope 返回 `Arrearage`（账户欠费，HTTP 400），未完成 |
+| 记录值 | 9/15 = 60%，但这是**欠费中断后的残缺结果**，不是模型质量 |
 
-> 说明：决策类用例涉及「3 个专家 + 审计复核 + 综合」的完整链路，单条耗时可达数分钟；C1/C2 在 8 分钟超时阈值内未完成，属链路延迟问题而非答案错误。
+> 说明：`evaluation/result.json` 是这次重跑的真实产物，含 5 条 `[ERROR]`。
+> 需要先给 DashScope 账户充值，然后重跑（`--ids` 默认写
+> `evaluation/result.partial.json`，不会覆盖完整 `result.json`）：
+>
+> ```bash
+> python -m evaluation.evaluate --ids C2,C3,D1,D2,D3
+> ```
+>
+> 旧版 86.7% / “0% 幻觉”是改动前关键词判分的产物，已不再引用。
 
 ## 🧪 示例问题
 

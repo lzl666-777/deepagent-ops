@@ -20,6 +20,8 @@ import sys
 import time
 from pathlib import Path
 
+from tools.decision_gate import gate_final_answer
+
 sys.stdout.reconfigure(encoding="utf-8")
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
@@ -59,11 +61,16 @@ CASES = [
     # ---------- D. 边界（3，考察是否幻觉） ----------
     {"id": "D1", "cat": "边界", "q": "小米15手机的价格是多少？",
      "pass_if": [["没有", "未找到", "不存在", "无此", "查不到", "不包含"]],
-     "fail_if": ["5999", "4999", "3999"]},
+     # A "not found" answer that invents a product history is not a pass.
+     "fail_if": ["5999", "4999", "3999", "小米17", "2024年10月", "骁龙8至尊版"]},
     {"id": "D2", "cat": "边界", "q": "我们商品的亚马逊广告花费是多少？",
      "pass_if": [["没有", "不存在", "无数据", "未包含", "未提供", "查不到"]], "fail_if": []},
     {"id": "D3", "cat": "边界", "q": "帮我预测下个月便携榨汁杯的销量。",
-     "pass_if": [["无法", "不能", "不具备", "没有预测", "基于历史", "仅供参考"]], "fail_if": []},
+     "pass_if": [["无法", "不能", "不具备", "没有预测", "基于历史", "仅供参考"]],
+     # The current artifact claimed a 100% September return-rate and used it to
+     # reject the SKU; the database-wide rate is 21.82%. Do not let a generic
+     # "仅供参考" sentence turn that into a pass.
+     "fail_if": ["100%"]},
 ]
 
 
@@ -72,8 +79,15 @@ def _norm(s: str) -> str:
     return re.sub(r"[,，\s\u00a0]", "", s or "")
 
 
-def judge(answer: str, case: dict):
-    """返回 (是否通过, 未命中/违规说明)"""
+def judge(answer: str, case: dict, gate_allowed: bool = True, gate_reason: str = ""):
+    """返回 (是否通过, 未命中/违规说明)
+
+    A blocked decision is a failure regardless of which keywords the raw answer
+    happens to contain. This is what prevents a "仅供参考" sentence or a
+    confident "不存在" from passing a hallucinated decision.
+    """
+    if not gate_allowed:
+        return False, "决策门禁未通过: %s" % (gate_reason or "audit failed")
     ans = _norm(answer)
     for bad in case.get("fail_if", []):
         if _norm(bad) in ans:
@@ -88,7 +102,7 @@ def judge(answer: str, case: dict):
 
 
 async def run_case(agent, case: dict, timeout: float = 480):
-    """运行单条用例，返回 (调用的子agent列表, 最终回答)；异常不抛出，转成 [ERROR] 文本"""
+    """运行单条用例，返回 (子agent列表, 最终回答, 门禁是否通过, 门禁原因)。"""
     called, final = [], ""
 
     async def _run():
@@ -112,10 +126,14 @@ async def run_case(agent, case: dict, timeout: float = 480):
     try:
         await asyncio.wait_for(_run(), timeout=timeout)
     except asyncio.TimeoutError:
-        return called, "[TIMEOUT]"
+        return called, "[TIMEOUT]", True, ""
     except Exception as e:
-        return called, f"[ERROR] {type(e).__name__}: {e}"
-    return called, final
+        return called, f"[ERROR] {type(e).__name__}: {e}", True, ""
+
+    if not final or final.startswith("["):
+        return called, final, True, ""
+    gated = gate_final_answer(final)
+    return called, gated.text, gated.allowed, gated.reason
 
 
 def _save(out: Path, results, summary=None):
@@ -131,18 +149,27 @@ async def main():
         ids = set(sys.argv[sys.argv.index("--ids") + 1].split(","))
     cases = [c for c in CASES if ids is None or c["id"] in ids]
 
-    out = Path(__file__).resolve().parent / "result.json"
+    # A subset run must not overwrite the full 15-case artifact. Use a separate
+    # default file unless the caller explicitly gives --out.
+    if "--out" in sys.argv:
+        out = Path(sys.argv[sys.argv.index("--out") + 1]).resolve()
+    else:
+        out = Path(__file__).resolve().parent / (
+            "result.partial.json" if ids is not None else "result.json"
+        )
     results = []
     t_all = time.time()
     for i, case in enumerate(cases, 1):
         t0 = time.time()
-        called, final = await run_case(main_agent, case)
-        ok, reason = judge(final, case)
+        called, final, gate_allowed, gate_reason = await run_case(main_agent, case)
+        ok, reason = judge(final, case, gate_allowed=gate_allowed, gate_reason=gate_reason)
         dt = time.time() - t0
         results.append({
             "id": case["id"], "cat": case["cat"], "question": case["q"],
             "passed": ok, "reason": reason, "called_agents": called,
-            "audit_triggered": "审计专员" in called, "elapsed_s": round(dt, 1),
+            "audit_triggered": "审计专员" in called,
+            "gate_blocked": not gate_allowed,
+            "elapsed_s": round(dt, 1),
             "answer": final[:2000],
         })
         mark = "PASS" if ok else "FAIL"
@@ -153,9 +180,18 @@ async def main():
 
     total = len(results)
     passed = sum(1 for r in results if r["passed"])
-    halluc = sum(1 for r in results if "禁止内容" in (r["reason"] or ""))
+    halluc = sum(
+        1 for r in results
+        if "禁止内容" in (r["reason"] or "") or r.get("gate_blocked")
+    )
     decision = [r for r in results if r["cat"] == "决策"]
     audit_hit = sum(1 for r in decision if r["audit_triggered"])
+
+    error_cases = sum(
+        1 for r in results
+        if str(r.get("answer", "")).startswith(("[ERROR]", "[TIMEOUT]"))
+    )
+    arrears = any("Arrearage" in str(r.get("answer", "")) for r in results)
 
     summary = {
         "total": total,
@@ -167,7 +203,15 @@ async def main():
         "audit_triggered": audit_hit,
         "audit_trigger_rate": round(audit_hit / len(decision) * 100, 1) if decision else 0,
         "elapsed_s": round(time.time() - t_all, 1),
+        "error_cases": error_cases,
+        "valid": error_cases == 0,
     }
+    if error_cases:
+        summary["notes"] = (
+            "Run has %d [ERROR]/[TIMEOUT] cases; accuracy is not a complete "
+            "model-quality metric.%s"
+            % (error_cases, " DashScope Arrearage detected." if arrears else "")
+        )
 
     print("\n" + "=" * 60)
     print("评测汇总")

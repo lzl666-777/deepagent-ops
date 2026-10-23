@@ -43,11 +43,12 @@ output_dir.mkdir(exist_ok=True)
 upload_dir = project_root / "upload"
 upload_dir.mkdir(exist_ok=True)
 
-# 配置 CORS
+# 配置 CORS：本地 demo 允许任意 origin，但关闭 credentials。
+# 通配符 + credentials 是浏览器会拒绝的非法组合，也不是安全的默认值。
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )

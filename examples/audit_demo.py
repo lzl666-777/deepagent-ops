@@ -68,7 +68,7 @@ def main() -> None:
 
 
     print("\n场景 C：分析师用了小数（0.2182 而不是 21.82）")
-    c = audit_claims({"退货率": 0.2182}, TRUTH)
+    c = audit_claims({"毛利率": 42.0, "退货率": 0.2182, "库存周转天数": 150.0}, TRUTH)
     print(short(c))
 
 

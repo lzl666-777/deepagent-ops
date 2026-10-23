@@ -12,7 +12,7 @@ from typing import Any, Dict
 from langchain_core.tools import tool
 from mysql.connector import connect
 
-from tools.audit_core import Truth, audit_claims, render
+from tools.audit_core import DECISION_REQUIRED_METRICS, Truth, audit_claims, render
 from tools.mysql_tools import get_db_config
 
 MAX_PRODUCT_MATCHES = 5
@@ -77,14 +77,23 @@ def collect_truth(product_name: str) -> Truth:
     total_stock = int(on_hand) + int(in_transit)
     sales_qty = int(sold)
     returned_qty = int(returned)
+    # mysql-connector returns SUM(...) as Decimal; Decimal / float raises.
+    sales90 = int(sales90 or 0)
     daily_avg = sales90 / 90.0
+    # Recompute the margin from cost/price instead of trusting the stored
+    # column. The audit is supposed to be independent of the data it checks;
+    # if the stored margin is stale, using it as "truth" would flag a correct
+    # report and bless an incorrect one.
+    cost_f = float(cost or 0)
+    price_f = float(price or 0)
+    computed_margin = ((1 - cost_f / price_f) * 100.0) if price_f else float(margin or 0)
     return Truth(
         product_name=product_name,
         sku=sku,
         category=category or "",
-        cost=float(cost or 0),
-        price=float(price or 0),
-        gross_margin=float(margin or 0),
+        cost=cost_f,
+        price=price_f,
+        gross_margin=computed_margin,
         sales_qty=sales_qty,
         sales_amount=float(amount or 0),
         returned_qty=returned_qty,
@@ -100,19 +109,26 @@ def collect_truth(product_name: str) -> Truth:
 # --------------------------------------------------------------------------- #
 # 工具
 # --------------------------------------------------------------------------- #
-def _parse_claims(raw: Any) -> Dict[str, Any]:
-    """模型有时会把 dict 序列化成 JSON 字符串传进来。"""
+def _parse_claims(raw: Any) -> tuple[Dict[str, Any], str]:
+    """模型有时会把 dict 序列化成 JSON 字符串传进来。
+
+    Returns ``(claims, error)``. An empty dict is not a valid claim set for a
+    decision gate: the caller must not be able to skip verification by sending
+    nothing or malformed JSON.
+    """
     if raw is None:
-        return {}
+        return {}, "claims 为空"
     if isinstance(raw, dict):
-        return raw
+        return raw, "" if raw else "claims 为空"
     if isinstance(raw, str):
         try:
             parsed = json.loads(raw)
         except ValueError:
-            return {}
-        return parsed if isinstance(parsed, dict) else {}
-    return {}
+            return {}, "claims 不是合法 JSON"
+        if not isinstance(parsed, dict):
+            return {}, "claims 必须是 JSON 对象"
+        return parsed, "" if parsed else "claims 为空"
+    return {}, "claims 必须是 dict 或 JSON 对象"
 
 
 @tool
@@ -134,14 +150,31 @@ def verify_claims(product_name: str, claims: dict) -> str:
     Returns:
         审计结论（通过 / 不通过）、逐条问题清单（含数据库基准值）、基准值明细。
     """
-    parsed = _parse_claims(claims)
+    parsed, parse_error = _parse_claims(claims)
+    if parse_error:
+        return (
+            "【审计结论】无法复核\n\n"
+            "审计输入无效：%s。\n"
+            "按审计要求：无法复核时不得给出决策，结论必须为不通过。" % parse_error
+        )
     try:
         truth = collect_truth(product_name)
     except LookupError as exc:
-        return "无法复核：%s" % exc
+        return (
+            "【审计结论】无法复核\n\n"
+            "无法取到数据库基准值：%s。\n"
+            "按审计要求：无法复核时不得给出决策，结论必须为不通过。" % exc
+        )
     except Exception as exc:  # 数据库不可用时不要让整个 agent 崩掉
-        return "复核失败（数据库不可用）：%s: %s" % (type(exc).__name__, exc)
-    return render(audit_claims(parsed, truth))
+        return (
+            "【审计结论】无法复核\n\n"
+            "数据库不可用：%s: %s。\n"
+            "按审计要求：无法复核时不得给出决策，结论必须为不通过。"
+            % (type(exc).__name__, exc)
+        )
+    return render(audit_claims(
+        parsed, truth, required=DECISION_REQUIRED_METRICS,
+    ))
 
 
 if __name__ == "__main__":

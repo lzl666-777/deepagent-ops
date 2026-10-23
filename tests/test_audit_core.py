@@ -13,8 +13,10 @@ from tools.audit_core import (
     Truth,
     audit_claims,
     canonicalise,
+    render,
     truth_metrics,
 )
+from tools.audit_tools import _parse_claims, verify_claims
 
 
 def _truth(**overrides) -> Truth:
@@ -126,22 +128,62 @@ def test_internally_inconsistent_report_is_caught_even_without_truth():
 # --------------------------------------------------------------------------- #
 # 缺数据 ≠ 出错
 # --------------------------------------------------------------------------- #
-def test_missing_claims_are_skipped_not_failed():
+def test_missing_claims_fail_closed():
+    """A decision gate must not pass because the caller sent nothing.
+
+    ``report.passed`` stays a pure data-check result, but ``AuditOutcome.passed``
+    is the gate: it requires the decision-critical claims to be present and
+    actually verified.
+    """
     outcome = audit_claims({}, _truth())
-    assert outcome.passed                      # 没有数字可查 ≠ 数字是错的
-    assert outcome.report.errors == []
-    assert outcome.report.skipped >= len(METRICS)
+    assert not outcome.passed
+    assert not outcome.verified
+    assert set(outcome.missing_required) == {
+        "gross_margin", "return_rate", "turnover_days",
+    }
+    assert any(issue.check == "required_claims" for issue in outcome.report.errors)
 
 
-def test_unverifiable_metric_is_skipped():
-    """无动销商品没有周转天数，报了这个数也不该判错。"""
+def test_unverifiable_metric_fails_closed():
+    """无动销商品没有周转天数：报了这个数也不能算“通过”。"""
     truth = _truth(turnover_days=None, sales90_qty=0)
-    outcome = audit_claims({"turnover_days": 999}, truth)
-    assert outcome.passed
+    outcome = audit_claims(
+        {"turnover_days": 999}, truth, required=("turnover_days",),
+    )
+    assert not outcome.passed
+    assert outcome.unverifiable_required == ["turnover_days"]
+    assert any(issue.check == "unverifiable_claims" for issue in outcome.report.errors)
+
+
+def test_render_says_unverifiable_not_pass():
+    outcome = audit_claims({}, _truth())
+    text = render(outcome)
+    assert text.startswith("【审计结论】无法复核")
+    assert "不得给出决策" in text
+    assert "【审计结论】通过" not in text
+
+
+def test_parse_claims_rejects_empty_and_invalid_json():
+    assert _parse_claims(None)[1]
+    assert _parse_claims("")[1]
+    assert _parse_claims("not json")[1]
+    assert _parse_claims("[]")[1]
+    claims, error = _parse_claims('{"return_rate": 21.82}')
+    assert not error and claims["return_rate"] == 21.82
+
+
+def test_verify_claims_tool_rejects_empty_claims_without_db():
+    text = verify_claims.invoke({"product_name": "便携榨汁杯", "claims": {}})
+    assert "无法复核" in text
+    assert "不得给出决策" in text
 
 
 def test_unknown_keys_are_reported_not_silently_dropped():
-    outcome = audit_claims({"转化率": 3.1, "return_rate": 21.82}, _truth())
+    outcome = audit_claims(
+        {"转化率": 3.1, "return_rate": 21.82},
+        _truth(),
+        required=("return_rate",),
+    )
     assert outcome.unknown == ["转化率"]
     assert outcome.passed
 
