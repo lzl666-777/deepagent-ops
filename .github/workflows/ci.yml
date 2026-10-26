@@ -11,6 +11,11 @@ jobs:
     # The app depends on pywin32 and Word COM for PDF export, so Windows is the
     # faithful target. Unit tests do not need MySQL/RAGFlow/Tavily/DashScope.
     runs-on: windows-latest
+    env:
+      # The demo and reports contain Chinese; Windows runners default to a
+      # non-UTF-8 console code page, which makes print() raise UnicodeEncodeError.
+      PYTHONUTF8: "1"
+      PYTHONIOENCODING: "utf-8"
     strategy:
       fail-fast: false
       matrix:
