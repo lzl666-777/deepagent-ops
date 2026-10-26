@@ -1,5 +1,9 @@
 # 跨境电商多智能体经营决策系统（deepagent）
 
+![tests](https://github.com/lzl666-777/deepagent-ops/actions/workflows/ci.yml/badge.svg)
+![python](https://img.shields.io/badge/python-3.12-blue)
+![license](https://img.shields.io/badge/license-MIT-green)
+
 > 基于 **deepagents**（LangChain 多智能体框架）的跨境电商经营决策系统：**经营数据分析师、市场研究员、运营制度专员**三方并行取数，**审计专员独立复核**，最终产出带量化依据的 GO/NO-GO 决策报告。
 
 ## ✨ 核心亮点
@@ -80,6 +84,13 @@ deepagent_project/
 ```
 
 ## 🚀 快速开始
+
+### 0. 获取代码
+
+```bash
+git clone https://github.com/lzl666-777/deepagent-ops.git
+cd deepagent-ops
+```
 
 ### 1. 环境要求
 
