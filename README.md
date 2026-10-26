@@ -103,12 +103,10 @@ deepagent_project/
 uv sync                          # 项目是 uv 虚拟项目，没有 [build-system]，请用 uv
 ```
 
-审计链路依赖同级的 [`agent-audit`](../agent-audit) 仓库（`pyproject.toml` 里已声明，
-uv 会按 `[tool.uv.sources]` 的本地路径安装；用 pip 时手动装一次）：
-
-```bash
-pip install -e ../agent-audit
-```
+审计库 [`agent-audit`](vendor/agent-audit) 已作为 `vendor/agent-audit` 随仓库提供，
+**clone 本仓库即可，不需要再 clone 同级仓库**。`pyproject.toml` 的
+`[tool.uv.sources]` 指向该 vendored 快照；canonical 源仍是独立仓库，
+更新时同步 `vendor/agent-audit/agent_audit/`。
 
 **前端依赖**：
 

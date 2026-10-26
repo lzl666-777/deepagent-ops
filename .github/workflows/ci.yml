@@ -1,0 +1,33 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # The app depends on pywin32 and Word COM for PDF export, so Windows is the
+    # faithful target. Unit tests do not need MySQL/RAGFlow/Tavily/DashScope.
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+
+      - name: Install (vendored agent-audit included)
+        run: uv sync --python ${{ matrix.python-version }}
+
+      - name: Run unit tests
+        run: uv run pytest -q
+
+      - name: Audit demo (no DB / API key)
+        run: uv run python examples/audit_demo.py

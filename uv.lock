@@ -12,8 +12,8 @@ resolution-markers = [
 
 [[package]]
 name = "agent-audit"
-version = "0.1.1"
-source = { editable = "../agent-audit" }
+version = "0.1.2"
+source = { editable = "vendor/agent-audit" }
 
 [package.metadata]
 requires-dist = [{ name = "pytest", marker = "extra == 'dev'", specifier = ">=8" }]
@@ -355,7 +355,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "agent-audit", editable = "../agent-audit" },
+    { name = "agent-audit", editable = "vendor/agent-audit" },
     { name = "aiofiles", specifier = ">=25.1.0" },
     { name = "colorlog", specifier = ">=6.10.1" },
     { name = "deepagents", specifier = ">=0.6.6" },

@@ -4,7 +4,7 @@ version = "0.1.0"
 requires-python = ">=3.12"
 dependencies = [
     "aiofiles>=25.1.0",
-    "agent-audit>=0.1.1",
+    "agent-audit>=0.1.2",
     "colorlog>=6.10.1",
     "deepagents>=0.6.6",
     "fastapi>=0.136.3",
@@ -28,10 +28,10 @@ dependencies = [
 [dependency-groups]
 dev = ["pytest>=8"]
 
-# 审计链路依赖同级的 agent-audit 仓库（尚未发布到 PyPI）。
-# uv 会按这里的本地路径安装；用 pip 时执行 `pip install -e ../agent-audit`。
+# agent-audit is vendored so a single clone of this repo is runnable.
+# The canonical source remains ../agent-audit; sync the snapshot when it changes.
 [tool.uv.sources]
-agent-audit = { path = "../agent-audit", editable = true }
+agent-audit = { path = "vendor/agent-audit", editable = true }
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
